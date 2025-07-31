@@ -1,4 +1,7 @@
 {
+  "buildCommand": "./build.sh",
+  "outputDirectory": "public",
+  "installCommand": "",
   "rewrites": [
     {
       "source": "/",
