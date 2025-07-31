@@ -1,6 +1,6 @@
 # 📰 RSS资讯聚合网站
 
-一个功能完整的前端RSS资讯聚合网站，支持多源RSS订阅、自定义源管理和智能分页显示。
+一个功能完整的前端RSS资讯聚合网站，支持多源RSS订阅、自定义源管理和智能分页显示。特别针对YouTube RSS源进行了深度优化，完美支持`media:description`提取和作者信息清理。
 
 ## ✨ 功能特性
 
@@ -9,12 +9,14 @@
 - ✅ **智能XML解析**: 自动处理各种RSS格式和编码问题
 - ✅ **实时内容更新**: 一键刷新获取最新资讯
 - ✅ **响应式设计**: 完美适配桌面和移动设备
+- ✅ **YouTube RSS优化**: 专门优化YouTube RSS源的`media:description`提取
 
 ### 📡 RSS源管理
 - ✅ **自定义RSS源**: 支持添加任意RSS/RSSHub源
 - ✅ **源状态管理**: 启用/禁用、测试、删除RSS源
 - ✅ **本地存储**: 自动保存个人RSS源配置
 - ✅ **快速添加**: 预设常用RSS源一键添加
+- ✅ **智能代理选择**: 根据RSS源类型自动选择最佳代理服务
 
 ### 📄 分页浏览
 - ✅ **智能分页**: 每页10条新闻（可调整为5/10/20/50条）
@@ -27,6 +29,15 @@
 - ✅ **UTF-8编码处理**: 完美支持中文内容显示
 - ✅ **错误恢复**: 智能错误处理和用户友好提示
 - ✅ **性能优化**: 按需渲染和内存管理
+- ✅ **完整内容显示**: 移除描述截断限制，显示完整内容
+- ✅ **智能作者处理**: 自动清理URL链接，显示友好的作者名称
+
+### 🎯 YouTube RSS专项优化
+- ✅ **media:description提取**: 完美支持YouTube RSS中的视频描述
+- ✅ **嵌套结构处理**: 智能处理`media:group`内的标签
+- ✅ **命名空间兼容**: 支持多种XML命名空间查找方式
+- ✅ **频道名称优化**: 自动清理YouTube频道URL，显示友好名称
+- ✅ **知名频道映射**: 为Anthropic、Andrej Karpathy等知名频道提供友好显示名称
 
 ## 🚀 快速开始
 
@@ -83,11 +94,23 @@ git push origin main
 
 ```
 rss-news-site/
-├── index.html              # 主页面
-├── style.css              # 样式文件
-├── script.js              # 核心JavaScript逻辑
-├── 使用指南.md            # 详细使用说明
-└── README.md              # 项目文档 (本文件)
+├── index.html                    # 主页面
+├── style.css                    # 样式文件
+├── script.js                    # 核心JavaScript逻辑
+├── package.json                 # 项目配置和依赖
+├── vercel.json                  # Vercel部署配置
+├── build.sh                     # 构建脚本
+├── deploy.sh                    # 部署脚本
+├── README.md                    # 项目文档 (本文件)
+├── DEPLOYMENT.md                # 部署指南
+├── TECHNICAL_DOCUMENTATION.md   # 技术文档
+├── 使用指南.md                  # 详细使用说明
+└── public/                      # 部署版本文件
+    ├── index.html
+    ├── script.js
+    ├── style.css
+    ├── package.json
+    └── vercel.json
 ```
 
 ## 🔧 技术实现
@@ -102,13 +125,84 @@ rss-news-site/
 
 ### 核心算法
 
+#### YouTube RSS优化算法
+```javascript
+// 智能代理服务选择 - 根据RSS源类型选择最佳代理
+const isYouTubeRSS = source.url.includes('youtube.com');
+const proxyServices = isYouTubeRSS ? [
+    // YouTube RSS优先使用AllOrigins保留media:description
+    { name: 'AllOrigins', url: `https://api.allorigins.win/get?url=${encodeURIComponent(source.url)}` },
+    { name: 'RSS2JSON', url: `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(source.url)}` }
+] : [
+    // 非YouTube RSS优先使用RSS2JSON
+    { name: 'RSS2JSON', url: `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(source.url)}` },
+    { name: 'AllOrigins', url: `https://api.allorigins.win/get?url=${encodeURIComponent(source.url)}` }
+];
+
+// 增强的XML命名空间处理
+getTextContent(element, tagName) {
+    // 特殊处理 media:description，支持嵌套在 media:group 中
+    if (tagName === 'media:description') {
+        // 直接查找
+        let nodes = element.getElementsByTagName('media:description');
+        if (nodes.length > 0) return nodes[0].textContent.trim();
+        
+        // 在 media:group 中查找
+        const mediaGroups = element.getElementsByTagName('media:group');
+        for (let group of mediaGroups) {
+            const descNodes = group.getElementsByTagName('media:description');
+            if (descNodes.length > 0) return descNodes[0].textContent.trim();
+        }
+        
+        // 命名空间兼容查找
+        nodes = element.getElementsByTagName('description');
+        for (let node of nodes) {
+            if (node.namespaceURI && node.namespaceURI.includes('media')) {
+                return node.textContent.trim();
+            }
+        }
+    }
+    // ... 其他处理逻辑
+}
+
+// 智能作者名称清理
+cleanAuthorName(author) {
+    if (!author) return '';
+    
+    // 预定义的频道名称映射
+    const channelMappings = {
+        'UCrDwWp7EBBv4NwvScIpBDOA': 'Anthropic',
+        'UCXUPKJO5MZQN11PqgIvyuvQ': 'Andrej Karpathy'
+    };
+    
+    // 检查是否是YouTube频道URL
+    const youtubeChannelMatch = author.match(/channel_id=([^&]+)/);
+    if (youtubeChannelMatch) {
+        const channelId = youtubeChannelMatch[1];
+        return channelMappings[channelId] || `YouTube频道`;
+    }
+    
+    // 移除完整URL，只保留有意义的部分
+    if (author.startsWith('http')) {
+        try {
+            const url = new URL(author);
+            return url.hostname.replace('www.', '');
+        } catch {
+            return author;
+        }
+    }
+    
+    return author;
+}
+```
+
 #### RSS数据获取
 ```javascript
 // 多代理服务自动切换
 const proxyServices = [
     'https://api.allorigins.win/get?url=',
-    'https://cors-anywhere.herokuapp.com/',
-    'https://api.codetabs.com/v1/proxy?quest='
+    'https://api.rss2json.com/v1/api.json?rss_url=',
+    'https://cors-anywhere.herokuapp.com/'
 ];
 
 // Base64 + UTF-8编码处理
@@ -167,12 +261,33 @@ let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
 - ✅ Edge 79+
 - ✅ 移动端浏览器
 
+## 🚀 最新技术改进
+
+### v2024.12.31 - YouTube RSS深度优化
+- ✅ **media:description完美提取**: 解决YouTube RSS中视频描述无法显示的问题
+- ✅ **XML命名空间处理**: 支持`media:group`嵌套结构和多种命名空间查找
+- ✅ **智能代理选择**: YouTube RSS优先使用AllOrigins保留原始XML结构
+- ✅ **完整内容显示**: 移除所有描述截断限制，支持长内容完整显示
+- ✅ **作者信息优化**: 自动清理YouTube频道URL，显示友好的作者名称
+- ✅ **知名频道映射**: 为Anthropic、Andrej Karpathy等提供专门的显示名称
+- ✅ **多场景适配**: 修复单源、混合源、正则解析等所有显示场景
+
+### 技术亮点
+1. **深度XML解析**: 专门处理YouTube RSS的复杂XML结构
+2. **智能代理策略**: 根据RSS源类型自动选择最佳代理服务
+3. **用户体验优化**: 完整内容显示 + 友好作者名称 = 更好的阅读体验
+4. **高可用性**: 多重错误恢复机制确保服务稳定性
+
 ## 🎯 性能特点
 
 - **内存优化**: 分页显示减少80%+内存占用
-- **加载优化**: 并行请求多个RSS源
-- **渲染优化**: 按需DOM操作和动画效果
+- **加载优化**: 并行请求多个RSS源，智能代理选择
+- **渲染优化**: 按需DOM操作和流畅动画效果
 - **缓存友好**: LocalStorage持久化配置
+- **YouTube专项优化**: 针对YouTube RSS的`media:description`提取优化
+- **完整内容显示**: 移除描述截断限制，支持长内容显示
+- **智能错误恢复**: 多重代理服务确保高可用性
+- **作者信息优化**: 智能清理URL链接，提供友好显示名称
 
 ## 🔮 功能特色
 

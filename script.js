@@ -3,9 +3,12 @@ class RSSReader {
     constructor() {
         // 默认RSS源
         this.defaultSources = [
-            { url: 'https://www.qbitai.com/feed', name: '量子位', enabled: true },
+            { url: 'https://www.qbitai.com/feed', name: '量子位', enabled: false },
             { url: 'https://feeds.feedburner.com/qbitai', name: '量子位备用', enabled: false },
-            { url: 'https://rss.cnn.com/rss/edition.rss', name: 'CNN News', enabled: false }
+            { url: 'https://rss.cnn.com/rss/edition.rss', name: 'CNN News', enabled: false },
+            { url: 'https://www.youtube.com/feeds/videos.xml?channel_id=UCrDwWp7EBBv4NwvScIpBDOA', name: 'Anthropic YouTube', enabled: true },
+            { url: 'https://www.youtube.com/feeds/videos.xml?channel_id=UCXUPKJO5MZQN11PqgIvyuvQ', name: 'Andrej Karpathy YouTube', enabled: true },
+            { url: 'https://www.youtube.com/feeds/videos.xml?channel_id=UCXUPKJO5MZQN11PqgIvyuvQ', name: 'Andrej Karpathy YouTube (备用)', enabled: false }
         ];
         
         this.feedContainer = document.getElementById('feed');
@@ -48,7 +51,15 @@ class RSSReader {
         this.refreshBtn.addEventListener('click', () => {
             this.loadAllFeeds();
         });
-        
+
+        // 添加强制重置按钮事件
+        const resetBtn = document.getElementById('reset-btn');
+        if (resetBtn) {
+            resetBtn.addEventListener('click', () => {
+                this.resetToDefaults();
+            });
+        }
+
         this.manageBtn.addEventListener('click', () => {
             this.toggleRSSManager();
         });
@@ -414,7 +425,8 @@ class RSSReader {
             li.style.animationDelay = `${index * 0.1}s`;
             
             const formattedDate = this.formatDate(item.pubDate);
-            const cleanDescription = item.description.substring(0, 200) + '...';
+            // 移除描述截断，显示完整内容
+            const cleanDescription = item.description;
             
             li.innerHTML = `
                 <div class="feed-title">
@@ -453,9 +465,20 @@ class RSSReader {
         const title = this.getTextContent(item, 'title');
         const link = this.getTextContent(item, 'link');
         const pubDate = this.getTextContent(item, 'pubDate');
-        const description = this.getTextContent(item, 'description');
-        const author = this.getTextContent(item, 'dc\\:creator') || 
-                      this.getTextContent(item, 'author') || '量子位';
+        
+        // 优先提取media:description，然后是description
+        let description = this.getTextContent(item, 'media:description') || 
+                         this.getTextContent(item, 'description') ||
+                         this.getTextContent(item, 'summary') ||
+                         this.getTextContent(item, 'content');
+        
+        // 提取作者信息
+        let author = this.getTextContent(item, 'dc:creator') || 
+                    this.getTextContent(item, 'author') || 
+                    this.getTextContent(item, 'name') || '量子位';
+        
+        // 清理作者名称，移除URL链接，只保留频道名称
+        author = this.cleanAuthorName(author);
         
         // 创建列表项
         const li = document.createElement('li');
@@ -465,8 +488,8 @@ class RSSReader {
         // 格式化日期
         const formattedDate = this.formatDate(pubDate);
         
-        // 清理描述文本（移除HTML标签）
-        const cleanDescription = this.stripHtml(description).substring(0, 200) + '...';
+        // 清理描述文本（移除HTML标签），不截断，保持完整内容
+        const cleanDescription = this.stripHtml(description);
         
         li.innerHTML = `
             <div class="feed-title">
@@ -486,32 +509,44 @@ class RSSReader {
         return li;
     }
     
-    // 安全获取XML节点文本内容
-    getTextContent(item, selector) {
-        try {
-            // 尝试直接查询
-            let element = item.querySelector(selector);
-            
-            // 如果没找到，尝试不同的选择器变体
-            if (!element) {
-                const alternatives = [
-                    selector.replace('dc\\:', 'dc:'),
-                    selector.replace('\\:', ':'),
-                    selector
-                ];
-                
-                for (const alt of alternatives) {
-                    element = item.querySelector(alt) || 
-                             item.getElementsByTagName(alt.split(':').pop())[0];
-                    if (element) break;
+    // 清理作者名称，移除URL链接
+    cleanAuthorName(author) {
+        if (!author) return '未知作者';
+        
+        // 如果包含URL，尝试提取频道名称
+        if (author.includes('http')) {
+            try {
+                // 尝试从YouTube频道URL中提取频道名称
+                if (author.includes('youtube.com/channel/')) {
+                    // 对于YouTube频道，使用预定义的映射
+                    if (author.includes('UCrDwWp7EBBv4NwvScIpBDOA')) {
+                        return 'Anthropic';
+                    } else if (author.includes('UCXUPKJO5MZQN11PqgIvyuvQ')) {
+                        return 'Andrej Karpathy';
+                    }
+                    // 如果没有预定义映射，返回通用名称
+                    return 'YouTube频道';
                 }
+                
+                // 尝试从URL中提取域名作为作者名
+                const url = new URL(author);
+                return url.hostname.replace('www.', '').replace('.com', '');
+            } catch (e) {
+                // URL解析失败，尝试其他方法
+                console.warn('无法解析作者URL:', author);
             }
-            
-            return element ? element.textContent.trim() : '';
-        } catch (error) {
-            console.warn(`获取 ${selector} 内容失败:`, error);
-            return '';
         }
+        
+        // 移除常见的URL前缀
+        author = author.replace(/^https?:\/\//, '');
+        author = author.replace(/^www\./, '');
+        
+        // 如果仍然很长（可能是URL），截取前面部分
+        if (author.length > 50) {
+            author = author.substring(0, 30) + '...';
+        }
+        
+        return author.trim() || '未知作者';
     }
     
     // 格式化日期
@@ -593,17 +628,43 @@ class RSSReader {
     // === RSS源管理功能 ===
     
     // 加载保存的RSS源
+    resetToDefaults() {
+        console.log('重置到默认设置...');
+        // 清除本地存储
+        localStorage.removeItem('rssSources');
+        // 重新加载默认源
+        this.rssSources = [...this.defaultSources];
+        this.saveSources();
+        // 重新加载所有源
+        this.loadAllFeeds();
+        alert('已重置到默认RSS源并重新加载！');
+    }
+
     loadSavedSources() {
         const saved = localStorage.getItem('rss-sources');
         if (saved) {
             try {
-                this.rssSources = JSON.parse(saved);
+                const savedSources = JSON.parse(saved);
+                // 检查是否包含YouTube源，如果没有则重新使用默认源
+                const hasYouTubeSources = savedSources.some(source => 
+                    source.url.includes('youtube.com/feeds/videos.xml')
+                );
+                
+                if (hasYouTubeSources) {
+                    this.rssSources = savedSources;
+                } else {
+                    console.log('本地存储中没有YouTube源，使用更新的默认源');
+                    this.rssSources = [...this.defaultSources];
+                    this.saveSources(); // 保存新的默认源
+                }
             } catch (e) {
                 console.warn('加载保存的RSS源失败，使用默认源');
                 this.rssSources = [...this.defaultSources];
+                this.saveSources();
             }
         } else {
             this.rssSources = [...this.defaultSources];
+            this.saveSources(); // 首次使用时保存默认源
         }
     }
     
@@ -816,9 +877,15 @@ class RSSReader {
     async loadAllFeeds() {
         this.showLoading();
         
+        console.log('=== 开始加载RSS源 ===');
+        console.log('当前RSS源配置:', this.rssSources);
+        
         const enabledSources = this.rssSources.filter(source => source.enabled);
         
+        console.log('启用的RSS源:', enabledSources);
+        
         if (enabledSources.length === 0) {
+            console.log('没有启用的RSS源');
             this.showError('没有启用的RSS源，请在管理面板中添加并启用RSS源');
             return;
         }
@@ -830,7 +897,9 @@ class RSSReader {
         
         for (const source of enabledSources) {
             try {
+                console.log(`正在加载RSS源: ${source.name} (${source.url})`);
                 const items = await this.loadSingleFeed(source);
+                console.log(`RSS源 ${source.name} 返回 ${items.length} 个条目`);
                 if (items.length > 0) {
                     // 为每个条目添加来源信息
                     items.forEach(item => {
@@ -844,6 +913,8 @@ class RSSReader {
                 console.warn(`加载RSS源 ${source.name} 失败:`, error);
             }
         }
+        
+        console.log(`总共获取到 ${allItems.length} 个条目，成功加载 ${successCount}/${enabledSources.length} 个源`);
         
         if (allItems.length === 0) {
             this.showError(`所有RSS源都加载失败 (尝试了 ${enabledSources.length} 个源)`);
@@ -863,81 +934,252 @@ class RSSReader {
         console.log(`成功加载 ${successCount}/${enabledSources.length} 个RSS源，共 ${allItems.length} 个条目`);
     }
     
-    // 加载单个RSS源
+    // 加载单个RSS源 - 简化版本
     async loadSingleFeed(source) {
-        const proxyServices = [
-            `https://api.allorigins.win/get?url=${encodeURIComponent(source.url)}`,
-            `https://cors-anywhere.herokuapp.com/${source.url}`,
-            `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(source.url)}`
+        console.log(`🔄 加载RSS源: ${source.name}`);
+        
+        // 对于YouTube RSS，优先使用AllOrigins保留原始XML结构
+        // 对于其他RSS源，可以使用RSS2JSON
+        const isYouTubeRSS = source.url.includes('youtube.com');
+        
+        const proxyServices = isYouTubeRSS ? [
+            // YouTube RSS优先使用AllOrigins保留media:description
+            {
+                name: 'AllOrigins',
+                url: `https://api.allorigins.win/get?url=${encodeURIComponent(source.url)}`,
+                parse: async (response) => {
+                    const data = await response.json();
+                    const xmlText = data.contents;
+                    return this.parseRSSToItems(xmlText, source.name);
+                }
+            },
+            {
+                name: 'RSS2JSON',
+                url: `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(source.url)}`,
+                parse: async (response) => {
+                    const data = await response.json();
+                    if (data.status === 'ok' && data.items) {
+                        return data.items.map(item => ({
+                            title: item.title || '无标题',
+                            link: item.link || '#',
+                            description: item.description || item.content || '无描述',
+                            pubDate: item.pubDate || new Date().toISOString(),
+                            author: item.author || ''
+                        }));
+                    }
+                    throw new Error(data.message || 'RSS2JSON解析失败');
+                }
+            }
+        ] : [
+            // 非YouTube RSS优先使用RSS2JSON
+            {
+                name: 'RSS2JSON',
+                url: `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(source.url)}`,
+                parse: async (response) => {
+                    const data = await response.json();
+                    if (data.status === 'ok' && data.items) {
+                        return data.items.map(item => ({
+                            title: item.title || '无标题',
+                            link: item.link || '#',
+                            description: item.description || item.content || '无描述',
+                            pubDate: item.pubDate || new Date().toISOString(),
+                            author: item.author || ''
+                        }));
+                    }
+                    throw new Error(data.message || 'RSS2JSON解析失败');
+                }
+            },
+            {
+                name: 'AllOrigins',
+                url: `https://api.allorigins.win/get?url=${encodeURIComponent(source.url)}`,
+                parse: async (response) => {
+                    const data = await response.json();
+                    const xmlText = data.contents;
+                    return this.parseRSSToItems(xmlText, source.name);
+                }
+            }
         ];
         
-        for (const proxyUrl of proxyServices) {
+        for (const proxy of proxyServices) {
             try {
-                const response = await fetch(proxyUrl, {
-                    headers: { 'Accept': 'application/xml, text/xml, */*' }
+                console.log(`📡 尝试 ${proxy.name}...`);
+                
+                const response = await fetch(proxy.url, {
+                    headers: { 'Accept': 'application/json, application/xml, */*' }
                 });
                 
-                if (!response.ok) continue;
-                
-                let xmlText;
-                if (proxyUrl.includes('allorigins.win')) {
-                    const data = await response.json();
-                    xmlText = data.contents;
-                    
-                    // 处理base64编码
-                    if (xmlText.startsWith('data:application/rss+xml') || xmlText.startsWith('data:text/xml')) {
-                        const base64Data = xmlText.split(',')[1];
-                        if (base64Data) {
-                            const binaryString = atob(base64Data);
-                            const bytes = new Uint8Array(binaryString.length);
-                            for (let i = 0; i < binaryString.length; i++) {
-                                bytes[i] = binaryString.charCodeAt(i);
-                            }
-                            const decoder = new TextDecoder('utf-8');
-                            xmlText = decoder.decode(bytes);
-                        }
-                    }
-                } else {
-                    xmlText = await response.text();
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
                 }
                 
-                return this.parseRSSToItems(xmlText);
+                const items = await proxy.parse(response);
+                console.log(`✅ ${source.name}: ${items.length} 条目`);
+                return items;
                 
             } catch (error) {
-                console.warn(`代理服务 ${proxyUrl} 失败:`, error);
+                console.warn(`❌ ${proxy.name} 失败: ${error.message}`);
             }
         }
         
-        throw new Error('所有代理服务都不可用');
+        throw new Error(`无法加载 ${source.name}`);
     }
     
-    // 解析RSS为条目数组
-    parseRSSToItems(xmlText) {
-        const parser = new DOMParser();
-        const xmlDoc = parser.parseFromString(xmlText, 'application/xml');
-        const items = this.findRSSItems(xmlDoc);
-        
-        const result = [];
-        Array.from(items).slice(0, 20).forEach(item => {
-            const title = this.getTextContent(item, 'title');
-            const link = this.getTextContent(item, 'link');
-            const pubDate = this.getTextContent(item, 'pubDate');
-            const description = this.getTextContent(item, 'description');
-            const author = this.getTextContent(item, 'dc\\:creator') || 
-                          this.getTextContent(item, 'author') || '';
+    // 解析RSS为条目数组 - 优化版本
+    parseRSSToItems(xmlText, sourceName = '') {
+        try {
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
             
-            if (title && link) {
-                result.push({
-                    title,
-                    link,
-                    pubDate,
-                    description,
-                    author
-                });
+            // 检查解析错误
+            const parseError = xmlDoc.querySelector('parsererror');
+            if (parseError) {
+                throw new Error('XML解析错误: ' + parseError.textContent);
             }
-        });
+            
+            const items = [];
+            
+            // 尝试RSS 2.0格式 (item)
+            let entries = xmlDoc.querySelectorAll('item');
+            
+            // 如果没有找到item，尝试Atom格式 (entry)
+            if (entries.length === 0) {
+                entries = xmlDoc.querySelectorAll('entry');
+            }
+            
+            console.log(`📄 解析到 ${entries.length} 个条目`);
+            
+            entries.forEach((entry, index) => {
+                if (index >= 20) return; // 限制最多20条
+                
+                console.log(`\n=== 处理第 ${index + 1} 个条目 ===`);
+                
+                // 获取描述内容，优先使用media:description
+                let description = '';
+                
+                // 首先尝试获取 media:description
+                const mediaDesc = this.getTextContent(entry, 'media:description');
+                if (mediaDesc) {
+                    description = mediaDesc;
+                    console.log(`✅ 使用 media:description: ${description.substring(0, 50)}...`);
+                } else {
+                    // 回退到标准描述字段
+                    description = this.getTextContent(entry, 'description') || 
+                                this.getTextContent(entry, 'summary') || 
+                                this.getTextContent(entry, 'content') || '无描述';
+                    console.log(`⚠️ 使用标准描述: ${description.substring(0, 50)}...`);
+                }
+                
+                // 如果描述太长，截取前300个字符
+                if (description.length > 300) {
+                    description = description.substring(0, 300) + '...';
+                }
+                
+                const title = this.getTextContent(entry, 'title') || '无标题';
+                const link = this.getTextContent(entry, 'link') || 
+                           entry.querySelector('link')?.getAttribute('href') || '#';
+                
+                console.log(`标题: ${title}`);
+                console.log(`链接: ${link}`);
+                console.log(`描述长度: ${description.length}`);
+                
+                const item = {
+                    title: title,
+                    link: link,
+                    description: description,
+                    pubDate: this.getTextContent(entry, 'pubDate') || 
+                            this.getTextContent(entry, 'published') || 
+                            this.getTextContent(entry, 'updated') || 
+                            new Date().toISOString(),
+                    author: this.getTextContent(entry, 'dc:creator') || 
+                           this.getTextContent(entry, 'author') || '',
+                    source: sourceName
+                };
+                
+                items.push(item);
+            });
+            
+            console.log(`✅ 成功解析 ${items.length} 个条目`);
+            return items;
+            
+        } catch (error) {
+            console.error('RSS解析失败:', error);
+            throw new Error(`RSS解析失败: ${error.message}`);
+        }
+    }
+    
+    // 辅助函数：安全获取文本内容
+    getTextContent(element, tagName) {
+        console.log(`尝试获取: ${tagName}`);
         
-        return result;
+        // 特殊处理 media:description，因为它可能嵌套在 media:group 中
+        if (tagName === 'media:description') {
+            // 首先尝试直接查找
+            let nodes = element.getElementsByTagName('media:description');
+            if (nodes.length > 0) {
+                console.log(`直接找到 media:description`);
+                return nodes[0].textContent.trim();
+            }
+            
+            // 尝试在 media:group 中查找
+            const mediaGroups = element.getElementsByTagName('media:group');
+            for (let group of mediaGroups) {
+                const descNodes = group.getElementsByTagName('media:description');
+                if (descNodes.length > 0) {
+                    console.log(`在 media:group 中找到 media:description`);
+                    return descNodes[0].textContent.trim();
+                }
+            }
+            
+            // 尝试使用本地名称查找
+            nodes = element.getElementsByTagName('description');
+            for (let node of nodes) {
+                // 检查是否是 media 命名空间的 description
+                if (node.namespaceURI && node.namespaceURI.includes('media')) {
+                    console.log(`通过本地名找到 media:description`);
+                    return node.textContent.trim();
+                }
+            }
+        }
+        
+        // 如果包含命名空间，直接使用getElementsByTagName
+        if (tagName.includes(':')) {
+            const nodes = element.getElementsByTagName(tagName);
+            if (nodes.length > 0) {
+                console.log(`getElementsByTagName找到: ${tagName}`);
+                return nodes[0].textContent.trim();
+            }
+            
+            // 尝试只使用本地名称
+            const localName = tagName.split(':')[1];
+            const localNodes = element.getElementsByTagName(localName);
+            if (localNodes.length > 0) {
+                console.log(`本地名找到: ${localName}`);
+                return localNodes[0].textContent.trim();
+            }
+            
+            // 最后尝试querySelector with escaped colon
+            try {
+                const [namespace, local] = tagName.split(':');
+                const escapedSelector = `${namespace}\\:${local}`;
+                const node = element.querySelector(escapedSelector);
+                if (node) {
+                    console.log(`转义选择器找到: ${escapedSelector}`);
+                    return node.textContent.trim();
+                }
+            } catch (e) {
+                console.log(`转义选择器失败: ${e.message}`);
+            }
+        } else {
+            // 普通标签名，直接使用querySelector
+            const node = element.querySelector(tagName);
+            if (node) {
+                console.log(`普通选择器找到: ${tagName}`);
+                return node.textContent.trim();
+            }
+        }
+        
+        console.log(`未找到: ${tagName}`);
+        return '';
     }
     
     // 渲染混合RSS条目（存储所有条目并启用分页）
@@ -981,7 +1223,10 @@ class RSSReader {
             li.style.animationDelay = `${index * 0.1}s`;
             
             const formattedDate = this.formatDate(item.pubDate);
-            const cleanDescription = this.stripHtml(item.description).substring(0, 200) + '...';
+            // 移除描述截断，显示完整内容
+            const cleanDescription = this.stripHtml(item.description);
+            // 清理作者名称
+            const cleanAuthor = this.cleanAuthorName(item.author);
             
             li.innerHTML = `
                 <div class="feed-title">
@@ -996,7 +1241,7 @@ class RSSReader {
                     </span>
                     <span class="feed-author">
                         <i class="fas fa-user"></i>
-                        ${item.author || '未知'}
+                        ${cleanAuthor || '未知'}
                     </span>
                     <span class="feed-date">
                         <i class="fas fa-clock"></i>
