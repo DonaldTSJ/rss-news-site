@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NewsHub - 智能资讯聚合平台</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Hero Section -->
+    <header class="hero-header">
+        <div class="hero-bg">
+            <img src="https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=1920&h=600&fit=crop" alt="News Background" />
+            <div class="hero-overlay"></div>
+        </div>
+        <div class="hero-content">
+            <div class="container">
+                <div class="hero-text">
+                    <h1 class="hero-title">
+                        <i class="fas fa-newspaper"></i>
+                        NewsHub
+                    </h1>
+                    <p class="hero-subtitle">智能聚合全球资讯，个性化定制您的信息流</p>
+                    <div class="hero-stats">
+                        <div class="stat-item">
+                            <i class="fas fa-rss"></i>
+                            <span>多源聚合</span>
+                        </div>
+                        <div class="stat-item">
+                            <i class="fas fa-bolt"></i>
+                            <span>实时更新</span>
+                        </div>
+                        <div class="stat-item">
+                            <i class="fas fa-mobile-alt"></i>
+                            <span>全端适配</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="hero-controls">
+                    <button id="refresh-btn" class="btn btn-primary">
+                        <i class="fas fa-sync-alt"></i>
+                        刷新资讯
+                    </button>
+                    <button id="manage-sources-btn" class="btn btn-secondary">
+                        <i class="fas fa-cog"></i>
+                        管理RSS源
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="main-wrapper">
+        <div class="container">
+        
+            <!-- RSS源管理面板 -->
+            <div id="rss-manager" class="rss-manager hidden">
+                <div class="manager-card">
+                    <div class="manager-header">
+                        <h3><i class="fas fa-rss"></i> RSS源管理</h3>
+                        <button id="close-manager" class="close-btn">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    
+                    <div class="manager-content">
+                        <div class="add-source-section">
+                            <h4><i class="fas fa-plus-circle"></i> 添加新RSS源</h4>
+                            <div class="input-group">
+                                <input type="text" id="rss-url-input" placeholder="输入RSS URL，如：https://rsshub.app/youtube/user/@anthropic-ai" />
+                                <input type="text" id="rss-name-input" placeholder="RSS源名称（可选）" />
+                                <button id="add-rss-btn" class="btn btn-success">
+                                    <i class="fas fa-plus"></i> 添加
+                                </button>
+                            </div>
+                            <div class="quick-add">
+                                <p>快速添加：</p>
+                                <div class="quick-buttons">
+                                    <button class="quick-btn" data-url="https://rsshub.app/youtube/user/@anthropic-ai" data-name="Anthropic AI YouTube">
+                                        <i class="fab fa-youtube"></i> Anthropic AI
+                                    </button>
+                                    <button class="quick-btn" data-url="https://feeds.feedburner.com/oreilly" data-name="O'Reilly">
+                                        <i class="fas fa-book"></i> O'Reilly
+                                    </button>
+                                    <button class="quick-btn" data-url="https://rss.cnn.com/rss/edition.rss" data-name="CNN News">
+                                        <i class="fas fa-tv"></i> CNN
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="sources-list-section">
+                            <h4><i class="fas fa-list"></i> 当前RSS源</h4>
+                            <ul id="sources-list" class="sources-list"></ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 主要内容区域 -->
+            <main class="main-content">
+                <!-- 加载状态 -->
+                <div id="loading" class="loading-section">
+                    <div class="loading-spinner">
+                        <div class="spinner"></div>
+                        <p>正在加载最新资讯...</p>
+                    </div>
+                </div>
+                
+                <!-- 错误状态 -->
+                <div id="error" class="error-section" style="display: none;">
+                    <div class="error-content">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <h3>加载失败</h3>
+                        <p>请检查网络连接或稍后重试</p>
+                        <details id="debug-info" class="debug-details">
+                            <summary>查看详细信息</summary>
+                            <pre id="debug-content"></pre>
+                        </details>
+                    </div>
+                </div>
+                
+                <!-- RSS内容容器 -->
+                <section class="news-section">
+                    <div class="section-header">
+                        <h2><i class="fas fa-newspaper"></i> 最新资讯</h2>
+                        <div class="section-actions">
+                            <span class="last-update">最后更新：<span id="last-update-time">--</span></span>
+                        </div>
+                    </div>
+                    <ul id="feed" class="news-grid"></ul>
+                </section>
+                
+                <!-- 分页控件 -->
+                <nav id="pagination" class="pagination-nav hidden">
+                    <div class="pagination-wrapper">
+                        <div class="pagination-info">
+                            <i class="fas fa-info-circle"></i>
+                            <span id="pagination-info-text">显示第 1-10 条，共 0 条</span>
+                        </div>
+                        <div class="pagination-controls">
+                            <button id="first-page-btn" class="page-btn" title="首页">
+                                <i class="fas fa-angle-double-left"></i>
+                            </button>
+                            <button id="prev-page-btn" class="page-btn" title="上一页">
+                                <i class="fas fa-angle-left"></i>
+                            </button>
+                            <div id="page-numbers" class="page-numbers"></div>
+                            <button id="next-page-btn" class="page-btn" title="下一页">
+                                <i class="fas fa-angle-right"></i>
+                            </button>
+                            <button id="last-page-btn" class="page-btn" title="末页">
+                                <i class="fas fa-angle-double-right"></i>
+                            </button>
+                        </div>
+                        <div class="pagination-size">
+                            <label><i class="fas fa-list-ol"></i> 每页显示：</label>
+                            <select id="page-size-select">
+                                <option value="5">5条</option>
+                                <option value="10" selected>10条</option>
+                                <option value="20">20条</option>
+                                <option value="50">50条</option>
+                            </select>
+                        </div>
+                    </div>
+                </nav>
+            </main>
+        </div>
+    </div>
+    
+    <!-- Footer -->
+    <footer class="site-footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <h3><i class="fas fa-newspaper"></i> NewsHub</h3>
+                    <p>智能聚合全球资讯，个性化定制您的信息流</p>
+                </div>
+                <div class="footer-links">
+                    <div class="footer-section">
+                        <h4>产品功能</h4>
+                        <ul>
+                            <li>多源RSS聚合</li>
+                            <li>智能分页浏览</li>
+                            <li>个性化管理</li>
+                            <li>实时内容更新</li>
+                        </ul>
+                    </div>
+                    <div class="footer-section">
+                        <h4>技术支持</h4>
+                        <ul>
+                            <li>现代化Web技术</li>
+                            <li>响应式设计</li>
+                            <li>跨平台兼容</li>
+                            <li>开源友好</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2024 NewsHub. 基于现代Web技术构建的RSS聚合平台</p>
+                <div class="footer-social">
+                    <a href="#" title="GitHub"><i class="fab fa-github"></i></a>
+                    <a href="#" title="Twitter"><i class="fab fa-twitter"></i></a>
+                    <a href="#" title="RSS"><i class="fas fa-rss"></i></a>
+                </div>
+            </div>
+        </div>
+    </footer>
+    
+    <script src="script.js"></script>
+</body>
+</html>
